@@ -1,0 +1,62 @@
+services:
+  # 1. The Database
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: haze_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: haze_iot_db
+      POSTGRES_USER: haze
+      POSTGRES_PASSWORD: haze123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haze -d haze_iot_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. The Web Dashboard (app.py)
+  haze_dashboard:
+    build: .
+    container_name: haze_dashboard
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 3. The Background Data Scraper (2.py)
+  data_collector:
+    build: .
+    container_name: haze_collector
+    command: python 2.py
+    env_file:
+      - .env
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 4. The Sensor API (usb_reader.py)
+  sensor_api:
+    build: .
+    container_name: sensor_api
+    command: python api.py
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
